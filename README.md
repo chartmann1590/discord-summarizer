@@ -31,7 +31,7 @@ A Flask-based web application that monitors Discord channels and generates hourl
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/discord-summarizer.git
+git clone https://github.com/chartmann1590/discord-summarizer.git
 cd discord-summarizer
 
 # Copy environment example
