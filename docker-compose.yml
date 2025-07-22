@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  discord-summarizer:
+    build: .
+    container_name: discord-summarizer
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:////app/data/discord_summaries.db
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+    restart: unless-stopped

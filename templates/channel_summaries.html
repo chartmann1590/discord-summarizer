@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ channel_name }} Summaries - Discord Summarizer{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>{{ channel_name }} Summaries</h1>
+        <p class="text-muted">All summaries for channel ID: {{ channel_id }}</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+{% if summaries.items %}
+    <div class="row">
+        {% for summary in summaries.items %}
+        <div class="col-12 mb-3">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <strong>{{ summary.formatted_timestamp() }}</strong>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-primary">
+                                <i class="bi bi-chat-dots"></i> {{ summary.message_count }} messages
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="summary-text mb-0">{{ summary.summary_text }}</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Pagination -->
+    {% if summaries.has_prev or summaries.has_next %}
+    <nav aria-label="Summary pagination">
+        <ul class="pagination justify-content-center">
+            <li class="page-item {% if not summaries.has_prev %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('main.channel_summaries', channel_id=channel_id, page=summaries.prev_num) }}">
+                    Previous
+                </a>
+            </li>
+            
+            {% for page_num in summaries.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if page_num %}
+                    <li class="page-item {% if page_num == summaries.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('main.channel_summaries', channel_id=channel_id, page=page_num) }}">
+                            {{ page_num }}
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                {% endif %}
+            {% endfor %}
+            
+            <li class="page-item {% if not summaries.has_next %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('main.channel_summaries', channel_id=channel_id, page=summaries.next_num) }}">
+                    Next
+                </a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> No summaries have been generated for this channel yet.
+    </div>
+{% endif %}
+{% endblock %}
