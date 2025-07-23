@@ -79,7 +79,15 @@ def process_channel_summary(channel_id, discord_service, ollama_service):
     
     # Don't create a new summary if one was created in the last 50 minutes
     if last_summary:
-        time_since_last_summary = datetime.now(timezone.utc) - last_summary.timestamp
+        # Ensure both datetimes are timezone-aware
+        current_time = datetime.now(timezone.utc)
+        last_summary_time = last_summary.timestamp
+        
+        # If last_summary.timestamp is naive, make it aware (assume UTC)
+        if last_summary_time.tzinfo is None:
+            last_summary_time = last_summary_time.replace(tzinfo=timezone.utc)
+        
+        time_since_last_summary = current_time - last_summary_time
         if time_since_last_summary < timedelta(minutes=50):
             logger.info(f"Skipping channel {channel_id} - summary created {time_since_last_summary.total_seconds()/60:.1f} minutes ago")
             return
@@ -90,8 +98,13 @@ def process_channel_summary(channel_id, discord_service, ollama_service):
     # If we have a last summary, use its timestamp as the starting point
     # This ensures we don't re-process messages that were already summarized
     if last_summary and last_summary.timestamp:
+        # Ensure the timestamp is timezone-aware
+        last_summary_time = last_summary.timestamp
+        if last_summary_time.tzinfo is None:
+            last_summary_time = last_summary_time.replace(tzinfo=timezone.utc)
+        
         # Convert summary timestamp to ISO format string for Discord API
-        last_summary_iso = last_summary.timestamp.isoformat().replace('+00:00', 'Z')
+        last_summary_iso = last_summary_time.isoformat().replace('+00:00', 'Z')
         
         # Use the later of the two timestamps
         if not fetch_after_timestamp or last_summary_iso > fetch_after_timestamp:
