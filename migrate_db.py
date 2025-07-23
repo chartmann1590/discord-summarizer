@@ -57,6 +57,11 @@ def migrate_database(db_path='discord_summaries.db'):
         # Add summary_prompt column
         if 'summary_prompt' not in columns:
             print("Adding summary_prompt column to app_config...")
+            # SQLite doesn't support parameterized defaults in ALTER TABLE
+            # So we'll add the column without default and then update existing rows
+            cursor.execute("ALTER TABLE app_config ADD COLUMN summary_prompt TEXT")
+            
+            # Set default value for existing rows
             default_prompt = '''Please provide a concise summary of the following Discord conversation. 
 Focus on the main topics discussed, key decisions made, and important information shared. 
 Keep the summary under {max_length} words.
@@ -65,7 +70,7 @@ Conversation:
 {content}
 
 Summary:'''
-            cursor.execute("ALTER TABLE app_config ADD COLUMN summary_prompt TEXT DEFAULT ?", (default_prompt,))
+            cursor.execute("UPDATE app_config SET summary_prompt = ? WHERE summary_prompt IS NULL", (default_prompt,))
             print("✓ Added summary_prompt column")
         
         # Check channel_state columns
