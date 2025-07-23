@@ -3,66 +3,401 @@
 {% block title %}Dashboard - Discord Summarizer{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col">
-        <h1>Channel Summaries Dashboard</h1>
-        <p class="text-muted">View the latest summaries for your monitored Discord channels</p>
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-primary" id="runNowBtn" onclick="runNow()">
-            <i class="bi bi-play-circle"></i> Run Now
-            <span class="spinner-border spinner-border-sm loading" role="status"></span>
-        </button>
-    </div>
-</div>
+<style>
+    /* Custom styles for the new dashboard */
+    .dashboard-container {
+        display: flex;
+        gap: 1.5rem;
+        margin-top: -1rem;
+    }
+    
+    /* Sidebar styles */
+    .sidebar {
+        width: 280px;
+        flex-shrink: 0;
+    }
+    
+    .sidebar-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .server-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .server-item {
+        padding: 0.75rem 1rem;
+        margin: 0.25rem 0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .server-item:hover {
+        background: #f8f9fa;
+        transform: translateX(4px);
+    }
+    
+    .server-item.active {
+        background: #0d6efd;
+        color: white;
+    }
+    
+    .server-item .badge {
+        margin-left: auto;
+    }
+    
+    /* Main content styles */
+    .main-content {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .header-section {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+    }
+    
+    .header-section h1 {
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    
+    .header-section p {
+        opacity: 0.9;
+        margin-bottom: 0;
+    }
+    
+    /* Server section styles */
+    .server-section {
+        margin-bottom: 2.5rem;
+        display: none;
+    }
+    
+    .server-section.active {
+        display: block;
+    }
+    
+    .server-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e9ecef;
+    }
+    
+    .server-icon {
+        width: 48px;
+        height: 48px;
+        background: #6c757d;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+    }
+    
+    /* Channel cards */
+    .channel-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .channel-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        overflow: hidden;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .channel-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    
+    .channel-header {
+        background: #f8f9fa;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .channel-header h5 {
+        margin: 0;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .channel-id {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        font-weight: normal;
+    }
+    
+    .channel-body {
+        padding: 1.5rem;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .summary-meta {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    .summary-text {
+        flex: 1;
+        line-height: 1.6;
+        color: #495057;
+        margin-bottom: 1rem;
+    }
+    
+    .no-summary {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        color: #6c757d;
+    }
+    
+    .no-summary i {
+        font-size: 3rem;
+        opacity: 0.3;
+        display: block;
+        margin-bottom: 1rem;
+    }
+    
+    .channel-actions {
+        margin-top: auto;
+        padding-top: 1rem;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    /* Stats cards */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #0d6efd;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    /* Run button styles */
+    .run-button {
+        width: 100%;
+        padding: 0.75rem;
+        font-weight: 500;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .run-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+    }
+    
+    /* Responsive */
+    @media (max-width: 992px) {
+        .dashboard-container {
+            flex-direction: column;
+        }
+        
+        .sidebar {
+            width: 100%;
+        }
+        
+        .server-list {
+            display: flex;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+        
+        .server-item {
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .channel-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .header-section {
+            padding: 1.5rem;
+        }
+        
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    /* Show all servers on mobile */
+    @media (max-width: 992px) {
+        .server-section {
+            display: block !important;
+        }
+    }
+</style>
 
-{% for server_name, channels in servers %}
-<div class="mb-4">
-    <h3 class="text-primary">
-        <i class="bi bi-server"></i> {{ server_name }}
-    </h3>
-    <div class="row">
-        {% for channel in channels %}
-        <div class="col-md-6 mb-3">
-            <div class="card h-100">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="bi bi-hash"></i> {{ channel.name }}
-                        <small class="float-end opacity-75">{{ channel.id }}</small>
-                    </h5>
+<div class="dashboard-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <!-- Stats Card -->
+        <div class="sidebar-card">
+            <h6 class="mb-3"><i class="bi bi-graph-up"></i> Overview</h6>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ servers|sum(attribute='1')|length }}</div>
+                    <div class="stat-label">Channels</div>
                 </div>
-                <div class="card-body">
-                    {% if channel.latest_summary %}
-                        <h6 class="card-subtitle mb-2 text-muted">
-                            Latest Summary - {{ channel.latest_summary.formatted_timestamp(config) }}
-                        </h6>
-                        <p class="card-text summary-text">{{ channel.latest_summary.summary_text[:300] }}{% if channel.latest_summary.summary_text|length > 300 %}...{% endif %}</p>
-                        <p class="text-muted">
-                            <small>
-                                <i class="bi bi-chat-dots"></i> {{ channel.latest_summary.message_count }} messages summarized
-                            </small>
-                        </p>
-                    {% else %}
-                        <p class="text-muted">No summaries yet</p>
-                    {% endif %}
-                </div>
-                <div class="card-footer">
-                    <a href="{{ url_for('main.channel_summaries', channel_id=channel.id) }}" class="btn btn-sm btn-outline-primary">
-                        <i class="bi bi-list"></i> View All Summaries
-                    </a>
+                <div class="stat-card">
+                    <div class="stat-value">{{ servers|length }}</div>
+                    <div class="stat-label">Servers</div>
                 </div>
             </div>
+            <button class="btn btn-primary run-button" id="runNowBtn" onclick="runNow()">
+                <i class="bi bi-play-circle"></i> Run Now
+                <span class="spinner-border spinner-border-sm loading" role="status"></span>
+            </button>
         </div>
-        {% endfor %}
-    </div>
+        
+        <!-- Server List -->
+        <div class="sidebar-card">
+            <h6 class="mb-3"><i class="bi bi-server"></i> Servers</h6>
+            <ul class="server-list">
+                <li class="server-item active" onclick="showAllServers()">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                    <span>All Servers</span>
+                    <span class="badge bg-secondary">{{ servers|sum(attribute='1')|length }}</span>
+                </li>
+                {% for server_name, channels in servers %}
+                <li class="server-item" onclick="showServer('{{ loop.index0 }}')">
+                    <i class="bi bi-server"></i>
+                    <span>{{ server_name }}</span>
+                    <span class="badge bg-secondary">{{ channels|length }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="sidebar-card">
+            <h6 class="mb-3"><i class="bi bi-lightning"></i> Quick Actions</h6>
+            <div class="d-grid gap-2">
+                <a href="{{ url_for('main.config') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-gear"></i> Configuration
+                </a>
+            </div>
+        </div>
+    </aside>
+    
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header Section -->
+        <div class="header-section">
+            <h1><i class="bi bi-chat-dots"></i> Channel Summaries</h1>
+            <p>Monitor and summarize your Discord conversations with AI-powered insights</p>
+        </div>
+        
+        <!-- Server Sections -->
+        {% if servers %}
+            {% for server_name, channels in servers %}
+            <div class="server-section {% if loop.first %}active{% endif %}" id="server-{{ loop.index0 }}">
+                <div class="server-header">
+                    <div class="server-icon">
+                        <i class="bi bi-server"></i>
+                    </div>
+                    <div>
+                        <h2 class="mb-0">{{ server_name }}</h2>
+                        <p class="text-muted mb-0">{{ channels|length }} channel{{ 's' if channels|length != 1 else '' }}</p>
+                    </div>
+                </div>
+                
+                <div class="channel-grid">
+                    {% for channel in channels %}
+                    <div class="channel-card">
+                        <div class="channel-header">
+                            <h5>
+                                <i class="bi bi-hash"></i> {{ channel.name }}
+                                <span class="channel-id">{{ channel.id }}</span>
+                            </h5>
+                        </div>
+                        <div class="channel-body">
+                            {% if channel.latest_summary %}
+                                <div class="summary-meta">
+                                    <span><i class="bi bi-clock"></i> {{ channel.latest_summary.formatted_timestamp(config) }}</span>
+                                    <span><i class="bi bi-chat-dots"></i> {{ channel.latest_summary.message_count }} messages</span>
+                                </div>
+                                <div class="summary-text">
+                                    {{ channel.latest_summary.summary_text[:250] }}{% if channel.latest_summary.summary_text|length > 250 %}...{% endif %}
+                                </div>
+                            {% else %}
+                                <div class="no-summary">
+                                    <i class="bi bi-inbox"></i>
+                                    <p>No summaries yet</p>
+                                </div>
+                            {% endif %}
+                            <div class="channel-actions">
+                                <a href="{{ url_for('main.channel_summaries', channel_id=channel.id) }}" 
+                                   class="btn btn-outline-primary btn-sm w-100">
+                                    <i class="bi bi-list"></i> View All Summaries
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> No channels configured. Please go to the configuration page to add channels.
+            </div>
+        {% endif %}
+    </main>
 </div>
-{% endfor %}
-
-{% if not servers %}
-<div class="alert alert-info">
-    <i class="bi bi-info-circle"></i> No channels configured. Please go to the configuration page to add channels.
-</div>
-{% endif %}
 
 <!-- Results Modal -->
 <div class="modal fade" id="resultsModal" tabindex="-1">
@@ -85,6 +420,37 @@
 
 {% block scripts %}
 <script>
+// Server navigation
+function showServer(index) {
+    // Hide all server sections
+    document.querySelectorAll('.server-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    
+    // Remove active class from all server items
+    document.querySelectorAll('.server-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Show selected server
+    document.getElementById('server-' + index).classList.add('active');
+    document.querySelectorAll('.server-item')[parseInt(index) + 1].classList.add('active');
+}
+
+function showAllServers() {
+    // Show all server sections
+    document.querySelectorAll('.server-section').forEach(section => {
+        section.classList.add('active');
+    });
+    
+    // Update active state
+    document.querySelectorAll('.server-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelector('.server-item').classList.add('active');
+}
+
+// Run Now functionality
 async function runNow() {
     const btn = document.getElementById('runNowBtn');
     const spinner = btn.querySelector('.loading');
@@ -135,6 +501,11 @@ function showResults(results) {
     
     body.innerHTML = html;
     modal.show();
+}
+
+// Show all servers by default on desktop
+if (window.innerWidth > 992) {
+    showAllServers();
 }
 </script>
 {% endblock %}
