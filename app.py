@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_apscheduler import APScheduler
@@ -74,14 +74,37 @@ def process_channel_summary(channel_id, discord_service, ollama_service):
         db.session.add(channel_state)
         db.session.commit()
     
-    # Fetch messages since last read
+    # Check when the last summary was created
+    last_summary = Summary.query.filter_by(channel_id=channel_id).order_by(Summary.timestamp.desc()).first()
+    
+    # Don't create a new summary if one was created in the last 50 minutes
+    if last_summary:
+        time_since_last_summary = datetime.now(timezone.utc) - last_summary.timestamp
+        if time_since_last_summary < timedelta(minutes=50):
+            logger.info(f"Skipping channel {channel_id} - summary created {time_since_last_summary.total_seconds()/60:.1f} minutes ago")
+            return
+    
+    # Determine the timestamp to fetch messages from
+    fetch_after_timestamp = channel_state.last_read_timestamp
+    
+    # If we have a last summary, use its timestamp as the starting point
+    # This ensures we don't re-process messages that were already summarized
+    if last_summary and last_summary.timestamp:
+        # Convert summary timestamp to ISO format string for Discord API
+        last_summary_iso = last_summary.timestamp.isoformat().replace('+00:00', 'Z')
+        
+        # Use the later of the two timestamps
+        if not fetch_after_timestamp or last_summary_iso > fetch_after_timestamp:
+            fetch_after_timestamp = last_summary_iso
+    
+    # Fetch messages since last read or last summary
     messages = discord_service.fetch_messages(
         channel_id, 
-        after_timestamp=channel_state.last_read_timestamp
+        after_timestamp=fetch_after_timestamp
     )
     
     if not messages:
-        logger.info(f"No new messages in channel {channel_id}")
+        logger.info(f"No new messages in channel {channel_id} since {fetch_after_timestamp}")
         return
     
     # Prepare content for summarization
@@ -123,12 +146,12 @@ def process_channel_summary(channel_id, discord_service, ollama_service):
     summary.set_messages(stored_messages)
     db.session.add(summary)
     
-    # Update last read timestamp
+    # Update last read timestamp to the latest message
     latest_timestamp = max(msg['timestamp'] for msg in messages)
     channel_state.last_read_timestamp = latest_timestamp
     
     db.session.commit()
-    logger.info(f"Successfully created summary for channel {channel_id}")
+    logger.info(f"Successfully created summary for channel {channel_id} with {len(messages)} messages")
 
 if __name__ == '__main__':
     app = create_app()
