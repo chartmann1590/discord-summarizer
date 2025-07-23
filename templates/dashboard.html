@@ -16,42 +16,49 @@
     </div>
 </div>
 
-<div class="row">
-    {% for channel in channels %}
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">
-                    <i class="bi bi-hash"></i> {{ channel.name }}
-                    <small class="float-end">{{ channel.id }}</small>
-                </h5>
-            </div>
-            <div class="card-body">
-                {% if channel.latest_summary %}
-                    <h6 class="card-subtitle mb-2 text-muted">
-                        Latest Summary - {{ channel.latest_summary.formatted_timestamp() }}
-                    </h6>
-                    <p class="card-text summary-text">{{ channel.latest_summary.summary_text[:300] }}{% if channel.latest_summary.summary_text|length > 300 %}...{% endif %}</p>
-                    <p class="text-muted">
-                        <small>
-                            <i class="bi bi-chat-dots"></i> {{ channel.latest_summary.message_count }} messages summarized
-                        </small>
-                    </p>
-                {% else %}
-                    <p class="text-muted">No summaries yet</p>
-                {% endif %}
-            </div>
-            <div class="card-footer">
-                <a href="{{ url_for('main.channel_summaries', channel_id=channel.id) }}" class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-list"></i> View All Summaries
-                </a>
+{% for server_name, channels in servers %}
+<div class="mb-4">
+    <h3 class="text-primary">
+        <i class="bi bi-server"></i> {{ server_name }}
+    </h3>
+    <div class="row">
+        {% for channel in channels %}
+        <div class="col-md-6 mb-3">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-hash"></i> {{ channel.name }}
+                        <small class="float-end opacity-75">{{ channel.id }}</small>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if channel.latest_summary %}
+                        <h6 class="card-subtitle mb-2 text-muted">
+                            Latest Summary - {{ channel.latest_summary.formatted_timestamp(config) }}
+                        </h6>
+                        <p class="card-text summary-text">{{ channel.latest_summary.summary_text[:300] }}{% if channel.latest_summary.summary_text|length > 300 %}...{% endif %}</p>
+                        <p class="text-muted">
+                            <small>
+                                <i class="bi bi-chat-dots"></i> {{ channel.latest_summary.message_count }} messages summarized
+                            </small>
+                        </p>
+                    {% else %}
+                        <p class="text-muted">No summaries yet</p>
+                    {% endif %}
+                </div>
+                <div class="card-footer">
+                    <a href="{{ url_for('main.channel_summaries', channel_id=channel.id) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-list"></i> View All Summaries
+                    </a>
+                </div>
             </div>
         </div>
+        {% endfor %}
     </div>
-    {% endfor %}
 </div>
+{% endfor %}
 
-{% if not channels %}
+{% if not servers %}
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i> No channels configured. Please go to the configuration page to add channels.
 </div>

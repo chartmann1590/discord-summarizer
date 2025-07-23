@@ -6,7 +6,12 @@
 <div class="row mb-4">
     <div class="col">
         <h1>{{ channel_name }} Summaries</h1>
-        <p class="text-muted">All summaries for channel ID: {{ channel_id }}</p>
+        <p class="text-muted">
+            Channel ID: {{ channel_id }}
+            {% if channel_state.server_name %}
+            <br>Server: <strong>{{ channel_state.server_name }}</strong>
+            {% endif %}
+        </p>
     </div>
     <div class="col-auto">
         <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
@@ -23,7 +28,7 @@
                 <div class="card-header">
                     <div class="row align-items-center">
                         <div class="col">
-                            <strong>{{ summary.formatted_timestamp() }}</strong>
+                            <strong>{{ summary.formatted_timestamp(config) }}</strong>
                         </div>
                         <div class="col-auto">
                             <span class="badge bg-primary">

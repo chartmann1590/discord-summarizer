@@ -3,6 +3,12 @@ from app import db, process_channel_summary
 from models import AppConfig, ChannelState, Summary
 from services import DiscordService, OllamaService
 import logging
+import json
+
+try:
+    import pytz
+except ImportError:
+    pytz = None
 
 logger = logging.getLogger(__name__)
 
@@ -17,27 +23,44 @@ def index():
         flash('Please configure the application first.', 'warning')
         return redirect(url_for('main.config'))
     
-    # Get channel states with their latest summaries
-    channels_data = []
+    # Get channel states with their latest summaries, grouped by server
+    servers = {}
     for channel_id in config.get_channel_ids():
         channel_state = ChannelState.query.filter_by(channel_id=channel_id).first()
         if channel_state:
             latest_summary = channel_state.summaries.first()
-            channels_data.append({
+            server_key = channel_state.server_name or 'Ungrouped'
+            
+            if server_key not in servers:
+                servers[server_key] = []
+            
+            servers[server_key].append({
                 'id': channel_id,
                 'state': channel_state,
                 'latest_summary': latest_summary,
                 'name': get_channel_name(channel_id, config.user_token)
             })
         else:
-            channels_data.append({
+            # Channel not yet initialized
+            if 'Ungrouped' not in servers:
+                servers['Ungrouped'] = []
+            
+            servers['Ungrouped'].append({
                 'id': channel_id,
                 'state': None,
                 'latest_summary': None,
                 'name': get_channel_name(channel_id, config.user_token)
             })
     
-    return render_template('dashboard.html', channels=channels_data)
+    # Sort servers alphabetically, but keep 'Ungrouped' last
+    sorted_servers = []
+    for server_name in sorted(servers.keys()):
+        if server_name != 'Ungrouped':
+            sorted_servers.append((server_name, servers[server_name]))
+    if 'Ungrouped' in servers:
+        sorted_servers.append(('Ungrouped', servers['Ungrouped']))
+    
+    return render_template('dashboard.html', servers=sorted_servers, config=config)
 
 @main_bp.route('/config', methods=['GET', 'POST'])
 def config():
@@ -49,10 +72,28 @@ def config():
         config.user_token = request.form.get('user_token', '').strip()
         config.ollama_url = request.form.get('ollama_url', '').strip()
         config.model_name = request.form.get('model_name', '').strip()
+        config.timezone = request.form.get('timezone', 'US/Eastern').strip()
+        config.time_format_12hr = request.form.get('time_format') == '12hr'
         
-        # Parse channel IDs
-        channel_ids_raw = request.form.get('channel_ids', '')
-        channel_ids = [cid.strip() for cid in channel_ids_raw.split(',') if cid.strip()]
+        # Parse channel configuration
+        channel_config = request.form.get('channel_config', '')
+        channel_ids = []
+        server_mappings = {}
+        
+        for line in channel_config.strip().split('\n'):
+            if not line.strip():
+                continue
+            
+            parts = line.strip().split(',')
+            if len(parts) >= 1:
+                channel_id = parts[0].strip()
+                server_name = parts[1].strip() if len(parts) > 1 else None
+                
+                if channel_id:
+                    channel_ids.append(channel_id)
+                    if server_name:
+                        server_mappings[channel_id] = server_name
+        
         config.set_channel_ids(channel_ids)
         
         # Validate configuration
@@ -84,10 +125,65 @@ def config():
                 flash(error, 'danger')
         else:
             db.session.commit()
+            
+            # Update channel states with server names
+            for channel_id, server_name in server_mappings.items():
+                channel_state = ChannelState.query.filter_by(channel_id=channel_id).first()
+                if not channel_state:
+                    channel_state = ChannelState(channel_id=channel_id)
+                    db.session.add(channel_state)
+                
+                channel_state.server_name = server_name
+                
+                # Try to get server ID from Discord API
+                if valid:  # Discord connection is valid
+                    channel_info = discord_service.get_channel_info(channel_id)
+                    if channel_info and 'guild_id' in channel_info:
+                        channel_state.server_id = channel_info['guild_id']
+                        # Use Discord server name if no custom name provided
+                        if not server_name and 'guild_name' in channel_info:
+                            channel_state.server_name = channel_info['guild_name']
+            
+            db.session.commit()
             flash('Configuration saved successfully!', 'success')
             return redirect(url_for('main.index'))
     
-    return render_template('config.html', config=config)
+    # Prepare channel config for display
+    channel_config_lines = []
+    for channel_id in config.get_channel_ids():
+        channel_state = ChannelState.query.filter_by(channel_id=channel_id).first()
+        if channel_state and channel_state.server_name:
+            channel_config_lines.append(f"{channel_id},{channel_state.server_name}")
+        else:
+            channel_config_lines.append(channel_id)
+    
+    channel_config_text = '\n'.join(channel_config_lines)
+    
+    # Get available timezones
+    if pytz:
+        timezones = pytz.common_timezones
+    else:
+        # Fallback timezones if pytz is not available
+        timezones = ['UTC', 'US/Eastern', 'US/Central', 'US/Mountain', 'US/Pacific', 
+                     'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'Australia/Sydney']
+    
+    return render_template('config.html', 
+                         config=config, 
+                         channel_config=channel_config_text,
+                         timezones=timezones)
+
+@main_bp.route('/api/ollama-models')
+def get_ollama_models():
+    """API endpoint to get available Ollama models"""
+    config = AppConfig.get_config()
+    
+    if not config.ollama_url:
+        return jsonify({'error': 'Ollama URL not configured'}), 400
+    
+    ollama_service = OllamaService(config.ollama_url, config.model_name)
+    models = ollama_service.get_available_models()
+    
+    return jsonify({'models': models})
 
 @main_bp.route('/run-now', methods=['POST'])
 def run_now():
@@ -127,7 +223,9 @@ def channel_summaries(channel_id):
     return render_template('channel_summaries.html', 
                          channel_id=channel_id,
                          channel_name=channel_name,
-                         summaries=summaries)
+                         channel_state=channel_state,
+                         summaries=summaries,
+                         config=config)
 
 @main_bp.route('/api/status')
 def api_status():

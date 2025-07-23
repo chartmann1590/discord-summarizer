@@ -72,15 +72,36 @@ class DiscordService:
             raise
     
     def get_channel_info(self, channel_id):
-        """Get channel information"""
+        """Get channel information including server details"""
         url = f"{self.BASE_URL}/channels/{channel_id}"
+        
+        try:
+            response = self.session.get(url, headers=self.headers)
+            response.raise_for_status()
+            channel_data = response.json()
+            
+            # Try to get guild (server) information if available
+            if 'guild_id' in channel_data:
+                guild_info = self.get_guild_info(channel_data['guild_id'])
+                if guild_info:
+                    channel_data['guild_name'] = guild_info.get('name', 'Unknown Server')
+                    channel_data['guild_icon'] = guild_info.get('icon')
+            
+            return channel_data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching channel info for {channel_id}: {str(e)}")
+            return None
+    
+    def get_guild_info(self, guild_id):
+        """Get guild (server) information"""
+        url = f"{self.BASE_URL}/guilds/{guild_id}"
         
         try:
             response = self.session.get(url, headers=self.headers)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching channel info for {channel_id}: {str(e)}")
+            logger.error(f"Error fetching guild info for {guild_id}: {str(e)}")
             return None
     
     def _datetime_to_snowflake(self, dt):
@@ -141,7 +162,7 @@ Summary:"""
             response = self.session.post(
                 url, 
                 json=payload,
-                timeout=3000
+                timeout=600
             )
             response.raise_for_status()
             
@@ -155,20 +176,55 @@ Summary:"""
             logger.error(f"Error generating summary with Ollama: {str(e)}")
             return f"Error generating summary: {str(e)}"
     
+    def get_available_models(self):
+        """Get list of available models from Ollama"""
+        try:
+            response = self.session.get(f"{self.base_url}/api/tags", timeout=500)
+            response.raise_for_status()
+            
+            models = response.json().get('models', [])
+            model_list = []
+            
+            for model in models:
+                model_name = model.get('name', '')
+                # Clean up model name (remove :latest if present)
+                if ':latest' in model_name:
+                    model_name = model_name.replace(':latest', '')
+                
+                model_list.append({
+                    'name': model_name,
+                    'size': model.get('size', 0),
+                    'modified': model.get('modified_at', '')
+                })
+            
+            return sorted(model_list, key=lambda x: x['name'])
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get models from Ollama: {str(e)}")
+            return []
+    
     def test_connection(self):
         """Test if Ollama is accessible and model is available"""
         try:
             # Check if server is running
-            response = self.session.get(f"{self.base_url}/api/tags", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/tags", timeout=500)
             response.raise_for_status()
             
             models = response.json().get('models', [])
             model_names = [m['name'] for m in models]
             
-            if self.model_name in model_names or any(self.model_name in name for name in model_names):
+            # Clean up model names for comparison
+            clean_model_names = []
+            for name in model_names:
+                if ':latest' in name:
+                    clean_model_names.append(name.replace(':latest', ''))
+                clean_model_names.append(name)
+            
+            if self.model_name in clean_model_names or any(self.model_name in name for name in clean_model_names):
                 return True, f"Model {self.model_name} is available"
             else:
-                return False, f"Model {self.model_name} not found. Available models: {', '.join(model_names)}"
+                available = ', '.join([m.replace(':latest', '') for m in model_names])
+                return False, f"Model {self.model_name} not found. Available models: {available}"
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to connect to Ollama: {str(e)}")

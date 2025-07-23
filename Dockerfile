@@ -15,8 +15,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install gunicorn
 
-# Copy application code
+# Copy application code and scripts
 COPY . .
+
+# Ensure scripts are executable
+RUN chmod +x migrate_db.py startup.py
 
 # Create directory for SQLite database
 RUN mkdir -p /app/data
@@ -24,9 +27,10 @@ RUN mkdir -p /app/data
 # Set environment variables
 ENV FLASK_APP=app.py
 ENV DATABASE_URL=sqlite:////app/data/discord_summaries.db
+ENV PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 5000
 
-# Run with gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "3000", "wsgi:app"]
+# Use Python startup script
+CMD ["python", "startup.py"]

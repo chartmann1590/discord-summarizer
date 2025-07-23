@@ -12,18 +12,30 @@ A Flask-based web application that monitors Discord channels and generates hourl
 - 🔐 Discord user token authentication
 - 📊 Hourly automatic message summarization
 - 🎯 Monitor multiple Discord channels
+- 🏢 Server-based channel grouping
 - 🤖 AI-powered summaries using Ollama
+- 🎨 Automatic model detection from Ollama
 - 🌐 Web dashboard with Bootstrap UI
+- 🕐 Customizable timezone and time format (12/24 hour)
 - 💾 SQLite database for persistence
 - 🔄 Manual "Run Now" option
 - ⚡ Graceful error handling and retries
+- 🐳 Automatic database migration in Docker
+
+## What's New in v2.0
+
+- **Timezone Support**: Configure your preferred timezone and choose between 12-hour or 24-hour time format
+- **Server Grouping**: Channels are now grouped by Discord server for better organization
+- **Model Auto-Detection**: Automatically detects and lists all available Ollama models
+- **Improved UI**: Cleaner dashboard with server-based grouping
+- **Database Migration**: Automatic migration for existing installations
 
 ## Prerequisites
 
 - Python 3.8+
 - Ollama installed and running locally or on a remote server
 - Discord account with access to channels you want to monitor
-- The `llama3.2` model pulled in Ollama (`ollama pull llama3.2`)
+- At least one model installed in Ollama (e.g., `ollama pull llama3.2`)
 
 ## Quick Start
 
@@ -44,6 +56,8 @@ docker-compose up -d
 open http://localhost:5000
 ```
 
+**Note**: Database migrations are handled automatically when using Docker.
+
 ### Manual Installation
 
 1. Clone the repository:
@@ -61,6 +75,11 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+4. **For existing installations**, run the migration script:
+```bash
+python migrate_db.py
 ```
 
 **Note for Python 3.13 users**: If you encounter SQLAlchemy compatibility issues, upgrade to the latest version:
@@ -87,10 +106,25 @@ pip install --upgrade SQLAlchemy
 3. Right-click on any text channel you want to monitor
 4. Select **Copy Channel ID**
 
+### Channel Configuration
+
+You can configure channels in two ways:
+
+1. **Basic**: Just the channel ID
+   ```
+   123456789012345678
+   ```
+
+2. **With Server Grouping**: Channel ID and server name
+   ```
+   123456789012345678,My Cool Server
+   987654321098765432,Another Server
+   ```
+
 ### Setting up Ollama
 
 1. Install Ollama from [ollama.ai](https://ollama.ai)
-2. Pull the llama3.2 model:
+2. Install at least one model:
 ```bash
 ollama pull llama3.2
 ```
@@ -105,11 +139,13 @@ python3 run.py
 
 2. Open your browser and navigate to `http://localhost:5000`
 
-3. Go to the Configuration page and enter:
+3. Go to the Configuration page and set up:
    - Your Discord user token
-   - Channel IDs (comma-separated)
-   - Ollama server URL (default: http://localhost:11434)
-   - Model name (default: llama3.2)
+   - Channel IDs with optional server names
+   - Ollama server URL
+   - Click "Load Models" to see available models
+   - Select your preferred model
+   - Choose your timezone and time format preference
 
 4. Save the configuration
 
@@ -118,8 +154,9 @@ python3 run.py
 ## Usage
 
 ### Dashboard
-- View the latest summary for each monitored channel
-- See message counts and timestamps
+- View channels grouped by Discord server
+- See the latest summary for each channel
+- View message counts and timestamps in your preferred timezone/format
 - Click "View All Summaries" to see history
 
 ### Run Now
@@ -128,8 +165,9 @@ python3 run.py
 
 ### Configuration
 - Update your Discord token
-- Add or remove channels
-- Change Ollama settings
+- Add or remove channels with server grouping
+- Change Ollama settings and model selection
+- Customize timezone and time format
 
 ## Environment Variables
 
@@ -143,26 +181,44 @@ You can set these optional environment variables:
 ```
 discord-summarizer/
 ├── app.py              # Main Flask application and factory
-├── models.py           # Database models
+├── models.py           # Database models (with timezone support)
 ├── routes.py           # URL routes and views
 ├── services.py         # Discord and Ollama service classes
+├── migrate_db.py       # Database migration script
+├── startup.py          # Docker startup script with auto-migration
 ├── requirements.txt    # Python dependencies
 ├── templates/          # HTML templates
 │   ├── base.html
-│   ├── dashboard.html
-│   ├── config.html
+│   ├── dashboard.html  # Server-grouped channel view
+│   ├── config.html     # Enhanced configuration page
 │   └── channel_summaries.html
 └── README.md           # This file
 ```
 
 ## API Endpoints
 
-- `GET /` - Dashboard
+- `GET /` - Dashboard with server grouping
 - `GET /config` - Configuration page
 - `POST /config` - Update configuration
+- `GET /api/ollama-models` - Get available Ollama models
 - `POST /run-now` - Trigger manual summary
 - `GET /channel/<id>/summaries` - View channel history
 - `GET /api/status` - JSON status endpoint
+
+## Database Migration
+
+### Automatic (Docker)
+The Docker setup automatically runs migrations when starting the container.
+
+### Manual Migration
+For existing installations not using Docker:
+```bash
+python migrate_db.py
+```
+
+The migration script adds:
+- `timezone` and `time_format_12hr` columns to the configuration
+- `server_name` and `server_id` columns for channel grouping
 
 ## Security Considerations
 
@@ -199,9 +255,10 @@ To stop:
 docker-compose down
 ```
 
-3. **Environment Variables:**
-- Copy `.env.example` to `.env` and update the SECRET_KEY
-- The database will be stored in the `./data` directory (persisted between container restarts)
+3. **Database Persistence:**
+- The database is stored in the `./data` directory
+- This directory is mounted as a volume to persist data between container restarts
+- Migrations run automatically on container startup
 
 ### Using Gunicorn (Production without Docker)
 
@@ -210,7 +267,12 @@ docker-compose down
 pip install gunicorn
 ```
 
-2. Run with Gunicorn:
+2. Run migrations if upgrading:
+```bash
+python migrate_db.py
+```
+
+3. Run with Gunicorn:
 ```bash
 gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 wsgi:app
 ```
@@ -220,6 +282,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 wsgi:app
 #### Heroku
 1. Create a `Procfile`:
 ```
+release: python migrate_db.py
 web: gunicorn wsgi:app
 ```
 
@@ -233,6 +296,7 @@ git push heroku main
 - Use the provided Dockerfile
 - Set environment variables in the platform's dashboard
 - The app will auto-deploy from your GitHub repository
+- Migrations run automatically via the startup script
 
 ## Troubleshooting
 
@@ -246,16 +310,22 @@ git push heroku main
 2. **"Cannot connect to Ollama"**:
    - Verify Ollama is running (`ollama list`)
    - Check the URL is correct
-   - Ensure the model is downloaded
+   - Click "Load Models" to verify connection and see available models
 
 3. **No messages being fetched**:
    - Verify you have access to the channels
    - Check channel IDs are correct
    - Ensure there are new messages since last check
 
+4. **Timezone not showing correctly**:
+   - Make sure pytz is installed (`pip install pytz`)
+   - Check your timezone selection in configuration
+
 ### Logs
 
-The application logs to stdout. Check console output for detailed error messages.
+- Application logs to stdout
+- Docker logs: `docker-compose logs -f`
+- Check console output for detailed error messages
 
 ## Contributing
 
@@ -267,7 +337,7 @@ The application logs to stdout. Check console output for detailed error messages
 
 ## License
 
-This project is provided as-is for educational purposes. Use responsibly and in accordance with Discord's Terms of Service.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Disclaimer
 

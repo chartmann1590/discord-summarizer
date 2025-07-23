@@ -24,11 +24,11 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="channel_ids" class="form-label">Channel IDs</label>
-                        <textarea class="form-control" id="channel_ids" name="channel_ids" rows="3" required
-                                  placeholder="123456789012345678, 987654321098765432">{{ config.get_channel_ids() | join(', ') }}</textarea>
+                        <label for="channel_config" class="form-label">Channel Configuration</label>
+                        <textarea class="form-control" id="channel_config" name="channel_config" rows="5" required
+                                  placeholder="channel_id,server_name&#10;123456789012345678,My Cool Server&#10;987654321098765432,Another Server&#10;555555555555555555">{{ channel_config }}</textarea>
                         <small class="form-text text-muted">
-                            Comma-separated list of Discord channel IDs to monitor
+                            One channel per line. Format: channel_id,server_name (server name is optional)
                         </small>
                     </div>
                 </div>
@@ -41,8 +41,14 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label for="ollama_url" class="form-label">Ollama Server URL</label>
-                        <input type="url" class="form-control" id="ollama_url" name="ollama_url" 
-                               value="{{ config.ollama_url or 'http://localhost:11434' }}" required>
+                        <div class="input-group">
+                            <input type="url" class="form-control" id="ollama_url" name="ollama_url" 
+                                   value="{{ config.ollama_url or 'http://localhost:11434' }}" required>
+                            <button class="btn btn-outline-secondary" type="button" id="refreshModels" 
+                                    onclick="loadOllamaModels()">
+                                <i class="bi bi-arrow-clockwise"></i> Load Models
+                            </button>
+                        </div>
                         <small class="form-text text-muted">
                             URL of your Ollama server (e.g., http://localhost:11434)
                         </small>
@@ -50,11 +56,51 @@
                     
                     <div class="mb-3">
                         <label for="model_name" class="form-label">Model Name</label>
-                        <input type="text" class="form-control" id="model_name" name="model_name" 
-                               value="{{ config.model_name or 'llama3.2' }}" required>
+                        <select class="form-control" id="model_name" name="model_name" required>
+                            <option value="{{ config.model_name or 'llama3.2' }}">{{ config.model_name or 'llama3.2' }} (current)</option>
+                        </select>
                         <small class="form-text text-muted">
-                            Ollama model to use for summarization
+                            Click "Load Models" to fetch available models from your Ollama server
                         </small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-clock"></i> Time Display Settings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="timezone" class="form-label">Timezone</label>
+                        <select class="form-control" id="timezone" name="timezone" required>
+                            {% for tz in timezones %}
+                            <option value="{{ tz }}" {% if tz == config.timezone %}selected{% endif %}>{{ tz }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">
+                            Your preferred timezone for displaying timestamps
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Time Format</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="time_format" id="time_12hr" 
+                                       value="12hr" {% if config.time_format_12hr %}checked{% endif %}>
+                                <label class="form-check-label" for="time_12hr">
+                                    12-hour (e.g., 3:30 PM)
+                                </label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="time_format" id="time_24hr" 
+                                       value="24hr" {% if not config.time_format_12hr %}checked{% endif %}>
+                                <label class="form-check-label" for="time_24hr">
+                                    24-hour (e.g., 15:30)
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -100,16 +146,21 @@
                     <h2 class="accordion-header">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
                                 data-bs-target="#channelHelp">
-                            How to find Channel IDs
+                            How to configure channels
                         </button>
                     </h2>
                     <div id="channelHelp" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
                         <div class="accordion-body">
+                            <p>Enter one channel per line. You can optionally specify a server name for grouping:</p>
+                            <ul>
+                                <li><strong>Basic format:</strong> <code>channel_id</code></li>
+                                <li><strong>With server name:</strong> <code>channel_id,Server Name</code></li>
+                            </ul>
+                            <p>To get channel IDs:</p>
                             <ol>
                                 <li>Enable Developer Mode in Discord Settings → Advanced</li>
                                 <li>Right-click on any text channel</li>
                                 <li>Select "Copy Channel ID"</li>
-                                <li>Paste the ID into the configuration</li>
                             </ol>
                         </div>
                     </div>
@@ -118,4 +169,84 @@
         </div>
     </div>
 </div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2 mb-0">Loading models...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadOllamaModels() {
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    loadingModal.show();
+    
+    try {
+        // Save current Ollama URL temporarily
+        const ollamaUrl = document.getElementById('ollama_url').value;
+        if (!ollamaUrl) {
+            alert('Please enter an Ollama URL first');
+            loadingModal.hide();
+            return;
+        }
+        
+        // Save form data temporarily
+        const formData = new FormData(document.querySelector('form'));
+        
+        // Submit form to save URL first
+        const response = await fetch('/api/ollama-models');
+        const data = await response.json();
+        
+        if (response.ok && data.models) {
+            const select = document.getElementById('model_name');
+            const currentModel = select.value;
+            
+            // Clear existing options
+            select.innerHTML = '';
+            
+            // Add models
+            data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                option.textContent = model.name;
+                if (model.name === currentModel) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+            
+            if (data.models.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No models found';
+                select.appendChild(option);
+            }
+        } else {
+            alert('Error loading models: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        loadingModal.hide();
+    }
+}
+
+// Auto-load models when page loads if Ollama URL is set
+document.addEventListener('DOMContentLoaded', function() {
+    const ollamaUrl = document.getElementById('ollama_url').value;
+    if (ollamaUrl && ollamaUrl !== 'http://localhost:11434') {
+        // Don't auto-load on first page load to avoid delays
+    }
+});
+</script>
 {% endblock %}
