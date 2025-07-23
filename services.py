@@ -162,7 +162,7 @@ Summary:"""
             response = self.session.post(
                 url, 
                 json=payload,
-                timeout=600
+                timeout=6000
             )
             response.raise_for_status()
             
