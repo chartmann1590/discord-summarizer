@@ -4,11 +4,12 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-8 mx-auto">
+    <div class="col-md-10 mx-auto">
         <h1>Configuration</h1>
-        <p class="text-muted">Configure your Discord token, channels, and Ollama settings</p>
+        <p class="text-muted">Configure your Discord token, channels, Ollama settings, email notifications, and summary prompts</p>
         
         <form method="POST" class="mt-4">
+            <!-- Discord Settings -->
             <div class="card mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0"><i class="bi bi-discord"></i> Discord Settings</h5>
@@ -34,6 +35,7 @@
                 </div>
             </div>
             
+            <!-- Ollama Settings -->
             <div class="card mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0"><i class="bi bi-cpu"></i> Ollama Settings</h5>
@@ -66,6 +68,109 @@
                 </div>
             </div>
             
+            <!-- Summary Prompt Settings -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-chat-quote"></i> Summary Prompt Settings</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="summary_prompt" class="form-label">Custom Summary Prompt</label>
+                        <textarea class="form-control" id="summary_prompt" name="summary_prompt" rows="8">{{ config.summary_prompt }}</textarea>
+                        <small class="form-text text-muted">
+                            Customize the prompt sent to the AI model. Use <code>{content}</code> for the conversation content and <code>{max_length}</code> for the word limit.
+                        </small>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetPrompt()">
+                        <i class="bi bi-arrow-clockwise"></i> Reset to Default
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Email Settings -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-envelope"></i> Daily Email Summary Settings
+                        <div class="form-check form-switch float-end">
+                            <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" 
+                                   {% if config.email_enabled %}checked{% endif %} onchange="toggleEmailSettings()">
+                            <label class="form-check-label" for="email_enabled">Enable</label>
+                        </div>
+                    </h5>
+                </div>
+                <div class="card-body" id="emailSettings" style="{% if not config.email_enabled %}display: none;{% endif %}">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="email_address" class="form-label">Your Email Address</label>
+                                <input type="email" class="form-control" id="email_address" name="email_address" 
+                                       value="{{ config.email_address or '' }}">
+                                <small class="form-text text-muted">Where to send daily summaries</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="daily_email_time" class="form-label">Send Time</label>
+                                <input type="time" class="form-control" id="daily_email_time" name="daily_email_time" 
+                                       value="{{ config.daily_email_time or '09:00' }}">
+                                <small class="form-text text-muted">Time to send daily summary (in your timezone)</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <h6 class="mt-4 mb-3">SMTP Settings</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smtp_server" class="form-label">SMTP Server</label>
+                                <input type="text" class="form-control" id="smtp_server" name="smtp_server" 
+                                       value="{{ config.smtp_server or '' }}" placeholder="smtp.gmail.com">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smtp_port" class="form-label">SMTP Port</label>
+                                <input type="number" class="form-control" id="smtp_port" name="smtp_port" 
+                                       value="{{ config.smtp_port or 587 }}" placeholder="587">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smtp_username" class="form-label">SMTP Username</label>
+                                <input type="text" class="form-control" id="smtp_username" name="smtp_username" 
+                                       value="{{ config.smtp_username or '' }}" placeholder="your-email@gmail.com">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smtp_password" class="form-label">SMTP Password</label>
+                                <input type="password" class="form-control" id="smtp_password" name="smtp_password" 
+                                       value="{{ config.smtp_password or '' }}" placeholder="App password or SMTP password">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="smtp_use_tls" name="smtp_use_tls" 
+                                   {% if config.smtp_use_tls %}checked{% endif %}>
+                            <label class="form-check-label" for="smtp_use_tls">
+                                Use TLS Encryption (recommended)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testEmailConnection()">
+                        <i class="bi bi-envelope-check"></i> Test Email Connection
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Time Display Settings -->
             <div class="card mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0"><i class="bi bi-clock"></i> Time Display Settings</h5>
@@ -79,7 +184,7 @@
                             {% endfor %}
                         </select>
                         <small class="form-text text-muted">
-                            Your preferred timezone for displaying timestamps
+                            Your preferred timezone for displaying timestamps and email scheduling
                         </small>
                     </div>
                     
@@ -115,6 +220,7 @@
             </div>
         </form>
         
+        <!-- Help Section -->
         <div class="mt-4">
             <h5>Configuration Help</h5>
             <div class="accordion" id="helpAccordion">
@@ -145,23 +251,65 @@
                 <div class="accordion-item">
                     <h2 class="accordion-header">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                                data-bs-target="#channelHelp">
-                            How to configure channels
+                                data-bs-target="#emailHelp">
+                            Email Configuration Guide
                         </button>
                     </h2>
-                    <div id="channelHelp" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
+                    <div id="emailHelp" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
                         <div class="accordion-body">
-                            <p>Enter one channel per line. You can optionally specify a server name for grouping:</p>
+                            <h6>Gmail Setup:</h6>
                             <ul>
-                                <li><strong>Basic format:</strong> <code>channel_id</code></li>
-                                <li><strong>With server name:</strong> <code>channel_id,Server Name</code></li>
+                                <li><strong>SMTP Server:</strong> smtp.gmail.com</li>
+                                <li><strong>Port:</strong> 587</li>
+                                <li><strong>Username:</strong> your-email@gmail.com</li>
+                                <li><strong>Password:</strong> Use an App Password (not your regular password)</li>
+                                <li><strong>TLS:</strong> Enabled</li>
                             </ul>
-                            <p>To get channel IDs:</p>
-                            <ol>
-                                <li>Enable Developer Mode in Discord Settings → Advanced</li>
-                                <li>Right-click on any text channel</li>
-                                <li>Select "Copy Channel ID"</li>
-                            </ol>
+                            
+                            <h6>Outlook/Hotmail Setup:</h6>
+                            <ul>
+                                <li><strong>SMTP Server:</strong> smtp.live.com</li>
+                                <li><strong>Port:</strong> 587</li>
+                                <li><strong>Username:</strong> your-email@outlook.com</li>
+                                <li><strong>Password:</strong> Your account password</li>
+                                <li><strong>TLS:</strong> Enabled</li>
+                            </ul>
+                            
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i> 
+                                For Gmail, you'll need to generate an App Password instead of using your regular password.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#promptHelp">
+                            Customizing Summary Prompts
+                        </button>
+                    </h2>
+                    <div id="promptHelp" class="accordion-collapse collapse" data-bs-parent="#helpAccordion">
+                        <div class="accordion-body">
+                            <p>You can customize how the AI summarizes your Discord conversations by modifying the prompt template.</p>
+                            
+                            <h6>Available Variables:</h6>
+                            <ul>
+                                <li><code>{content}</code> - The actual conversation content</li>
+                                <li><code>{max_length}</code> - Maximum word count for the summary</li>
+                            </ul>
+                            
+                            <h6>Example Prompts:</h6>
+                            <div class="alert alert-light">
+                                <strong>Brief Summary:</strong><br>
+                                <code>Summarize this Discord conversation in {max_length} words or less: {content}</code>
+                            </div>
+                            
+                            <div class="alert alert-light">
+                                <strong>Action-Focused:</strong><br>
+                                <code>Focus on decisions made and action items from this Discord conversation: {content}</code>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -178,7 +326,7 @@
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-                <p class="mt-2 mb-0">Loading models...</p>
+                <p class="mt-2 mb-0" id="loadingText">Loading...</p>
             </div>
         </div>
     </div>
@@ -187,12 +335,31 @@
 
 {% block scripts %}
 <script>
+// Toggle email settings visibility
+function toggleEmailSettings() {
+    const enabled = document.getElementById('email_enabled').checked;
+    const settings = document.getElementById('emailSettings');
+    settings.style.display = enabled ? 'block' : 'none';
+    
+    // Toggle required attributes
+    const requiredFields = ['email_address', 'smtp_server', 'smtp_username', 'smtp_password'];
+    requiredFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (enabled) {
+            field.setAttribute('required', 'required');
+        } else {
+            field.removeAttribute('required');
+        }
+    });
+}
+
+// Load Ollama models
 async function loadOllamaModels() {
     const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    document.getElementById('loadingText').textContent = 'Loading models...';
     loadingModal.show();
     
     try {
-        // Save current Ollama URL temporarily
         const ollamaUrl = document.getElementById('ollama_url').value;
         if (!ollamaUrl) {
             alert('Please enter an Ollama URL first');
@@ -200,10 +367,6 @@ async function loadOllamaModels() {
             return;
         }
         
-        // Save form data temporarily
-        const formData = new FormData(document.querySelector('form'));
-        
-        // Submit form to save URL first
         const response = await fetch('/api/ollama-models');
         const data = await response.json();
         
@@ -241,12 +404,61 @@ async function loadOllamaModels() {
     }
 }
 
-// Auto-load models when page loads if Ollama URL is set
-document.addEventListener('DOMContentLoaded', function() {
-    const ollamaUrl = document.getElementById('ollama_url').value;
-    if (ollamaUrl && ollamaUrl !== 'http://localhost:11434') {
-        // Don't auto-load on first page load to avoid delays
+// Test email connection
+async function testEmailConnection() {
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    document.getElementById('loadingText').textContent = 'Testing email connection...';
+    loadingModal.show();
+    
+    try {
+        // Gather email settings
+        const emailData = {
+            smtp_server: document.getElementById('smtp_server').value,
+            smtp_port: parseInt(document.getElementById('smtp_port').value),
+            smtp_username: document.getElementById('smtp_username').value,
+            smtp_password: document.getElementById('smtp_password').value,
+            smtp_use_tls: document.getElementById('smtp_use_tls').checked
+        };
+        
+        const response = await fetch('/api/test-email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(emailData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            alert('✅ Email connection successful!');
+        } else {
+            alert('❌ Email connection failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('❌ Error testing email: ' + error.message);
+    } finally {
+        loadingModal.hide();
     }
+}
+
+// Reset prompt to default
+function resetPrompt() {
+    const defaultPrompt = `Please provide a concise summary of the following Discord conversation. 
+Focus on the main topics discussed, key decisions made, and important information shared. 
+Keep the summary under {max_length} words.
+
+Conversation:
+{content}
+
+Summary:`;
+    
+    document.getElementById('summary_prompt').value = defaultPrompt;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleEmailSettings();
 });
 </script>
 {% endblock %}

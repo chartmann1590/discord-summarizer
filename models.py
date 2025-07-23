@@ -20,6 +20,27 @@ class AppConfig(db.Model):
     model_name = db.Column(db.String(50), default='llama3.2')
     timezone = db.Column(db.String(50), default='US/Eastern')  # User's preferred timezone
     time_format_12hr = db.Column(db.Boolean, default=True)  # True for 12hr, False for 24hr
+    
+    # Email settings
+    email_enabled = db.Column(db.Boolean, default=False)
+    email_address = db.Column(db.String(100), nullable=True)  # User's email address
+    smtp_server = db.Column(db.String(100), nullable=True)
+    smtp_port = db.Column(db.Integer, default=587)
+    smtp_username = db.Column(db.String(100), nullable=True)
+    smtp_password = db.Column(db.String(100), nullable=True)
+    smtp_use_tls = db.Column(db.Boolean, default=True)
+    daily_email_time = db.Column(db.String(5), default='09:00')  # Format: HH:MM
+    
+    # Custom summary prompt
+    summary_prompt = db.Column(db.Text, default='''Please provide a concise summary of the following Discord conversation. 
+Focus on the main topics discussed, key decisions made, and important information shared. 
+Keep the summary under {max_length} words.
+
+Conversation:
+{content}
+
+Summary:''')
+    
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), 
                           onupdate=lambda: datetime.now(timezone.utc))
@@ -38,6 +59,11 @@ class AppConfig(db.Model):
     def is_configured(self):
         """Check if app is properly configured"""
         return bool(self.user_token and self.get_channel_ids() and self.ollama_url)
+    
+    def is_email_configured(self):
+        """Check if email is properly configured"""
+        return bool(self.email_enabled and self.email_address and self.smtp_server 
+                   and self.smtp_username and self.smtp_password)
     
     def format_datetime(self, dt):
         """Format datetime according to user preferences"""
@@ -69,6 +95,10 @@ class AppConfig(db.Model):
         
         return f"{local_dt.strftime(date_format)} {local_dt.strftime(time_format)} {tz_abbr}"
     
+    def get_summary_prompt(self, content, max_length=500):
+        """Get the formatted summary prompt"""
+        return self.summary_prompt.format(content=content, max_length=max_length)
+    
     @classmethod
     def get_config(cls):
         """Get the single config instance or create one"""
@@ -86,6 +116,7 @@ class ChannelState(db.Model):
     server_name = db.Column(db.String(100), nullable=True)  # Discord server name
     server_id = db.Column(db.String(50), nullable=True)  # Discord server ID
     last_read_timestamp = db.Column(db.String(50), nullable=True)  # ISO format timestamp
+    last_summary_date = db.Column(db.Date, nullable=True)  # Track daily summaries
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), 
                           onupdate=lambda: datetime.now(timezone.utc))
@@ -107,6 +138,7 @@ class Summary(db.Model):
     summary_text = db.Column(db.Text, nullable=False)
     message_count = db.Column(db.Integer, default=0)
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    summary_type = db.Column(db.String(20), default='hourly')  # 'hourly' or 'daily'
     # New field to store the original messages
     original_messages = db.Column(db.Text, nullable=True)  # JSON string of messages
     
@@ -126,3 +158,13 @@ class Summary(db.Model):
     def set_messages(self, messages_list):
         """Set original messages from a list"""
         self.original_messages = json.dumps(messages_list)
+
+class DailySummary(db.Model):
+    """Track daily summaries that have been sent via email"""
+    id = db.Column(db.Integer, primary_key=True)
+    server_name = db.Column(db.String(100), nullable=False)
+    server_id = db.Column(db.String(50), nullable=True)
+    summary_date = db.Column(db.Date, nullable=False)
+    email_sent = db.Column(db.Boolean, default=False)
+    email_sent_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

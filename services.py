@@ -1,8 +1,12 @@
 import requests
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from urllib.parse import urljoin
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 
 logger = logging.getLogger(__name__)
 
@@ -134,11 +138,14 @@ class OllamaService:
         session = requests.Session()
         return session
     
-    def generate_summary(self, content, max_length=500):
-        """Generate a summary using Ollama"""
+    def generate_summary(self, content, prompt_template=None, max_length=500):
+        """Generate a summary using Ollama with custom prompt"""
         url = f"{self.base_url}/api/generate"
         
-        prompt = f"""Please provide a concise summary of the following Discord conversation. 
+        if prompt_template:
+            prompt = prompt_template.format(content=content, max_length=max_length)
+        else:
+            prompt = f"""Please provide a concise summary of the following Discord conversation. 
 Focus on the main topics discussed, key decisions made, and important information shared. 
 Keep the summary under {max_length} words.
 
@@ -162,7 +169,7 @@ Summary:"""
             response = self.session.post(
                 url, 
                 json=payload,
-                timeout=6000
+                timeout=60
             )
             response.raise_for_status()
             
@@ -179,7 +186,7 @@ Summary:"""
     def get_available_models(self):
         """Get list of available models from Ollama"""
         try:
-            response = self.session.get(f"{self.base_url}/api/tags", timeout=500)
+            response = self.session.get(f"{self.base_url}/api/tags", timeout=10)
             response.raise_for_status()
             
             models = response.json().get('models', [])
@@ -207,7 +214,7 @@ Summary:"""
         """Test if Ollama is accessible and model is available"""
         try:
             # Check if server is running
-            response = self.session.get(f"{self.base_url}/api/tags", timeout=500)
+            response = self.session.get(f"{self.base_url}/api/tags", timeout=10)
             response.raise_for_status()
             
             models = response.json().get('models', [])
@@ -228,4 +235,165 @@ Summary:"""
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to connect to Ollama: {str(e)}")
+            return False, str(e)
+
+class EmailService:
+    """Service for sending email notifications"""
+    
+    def __init__(self, config):
+        """Initialize with app config"""
+        self.config = config
+    
+    def send_daily_summary_email(self, server_summaries):
+        """Send daily summary email with all server summaries"""
+        if not self.config.is_email_configured():
+            logger.warning("Email not configured, skipping daily summary email")
+            return False
+        
+        try:
+            # Create message
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = f"Daily Discord Summary - {date.today().strftime('%B %d, %Y')}"
+            msg['From'] = formataddr(('Discord Summarizer', self.config.smtp_username))
+            msg['To'] = self.config.email_address
+            
+            # Create HTML content
+            html_content = self._create_daily_summary_html(server_summaries)
+            
+            # Create plain text version
+            text_content = self._create_daily_summary_text(server_summaries)
+            
+            # Attach both versions
+            part1 = MIMEText(text_content, 'plain')
+            part2 = MIMEText(html_content, 'html')
+            
+            msg.attach(part1)
+            msg.attach(part2)
+            
+            # Send email
+            with smtplib.SMTP(self.config.smtp_server, self.config.smtp_port) as server:
+                if self.config.smtp_use_tls:
+                    server.starttls()
+                server.login(self.config.smtp_username, self.config.smtp_password)
+                server.send_message(msg)
+            
+            logger.info(f"Daily summary email sent successfully to {self.config.email_address}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send daily summary email: {str(e)}")
+            return False
+    
+    def _create_daily_summary_html(self, server_summaries):
+        """Create HTML version of daily summary email"""
+        today = date.today().strftime('%B %d, %Y')
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .header {{ background-color: #5865f2; color: white; padding: 20px; text-align: center; }}
+                .server {{ margin: 20px 0; padding: 15px; border-left: 4px solid #5865f2; background-color: #f8f9fa; }}
+                .channel {{ margin: 15px 0; padding: 10px; background-color: white; border-radius: 5px; }}
+                .summary {{ margin: 10px 0; padding: 10px; background-color: #f1f3f4; border-radius: 3px; }}
+                .meta {{ font-size: 0.9em; color: #666; margin-bottom: 5px; }}
+                .footer {{ text-align: center; padding: 20px; color: #666; font-size: 0.9em; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>📊 Daily Discord Summary</h1>
+                <p>{today}</p>
+            </div>
+        """
+        
+        if not server_summaries:
+            html += "<div style='text-align: center; padding: 40px;'><p>No activity to summarize today.</p></div>"
+        else:
+            for server_name, channels in server_summaries.items():
+                html += f"""
+                <div class="server">
+                    <h2>🖥️ {server_name}</h2>
+                """
+                
+                for channel_data in channels:
+                    channel_name = channel_data['name']
+                    summaries = channel_data['summaries']
+                    
+                    html += f"""
+                    <div class="channel">
+                        <h3># {channel_name}</h3>
+                    """
+                    
+                    if summaries:
+                        for summary in summaries:
+                            html += f"""
+                            <div class="summary">
+                                <div class="meta">{summary['timestamp']} • {summary['message_count']} messages</div>
+                                <div>{summary['text']}</div>
+                            </div>
+                            """
+                    else:
+                        html += "<p><em>No activity today</em></p>"
+                    
+                    html += "</div>"
+                
+                html += "</div>"
+        
+        html += """
+            <div class="footer">
+                <p>This summary was generated by Discord Summarizer</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html
+    
+    def _create_daily_summary_text(self, server_summaries):
+        """Create plain text version of daily summary email"""
+        today = date.today().strftime('%B %d, %Y')
+        text = f"Daily Discord Summary - {today}\n"
+        text += "=" * 50 + "\n\n"
+        
+        if not server_summaries:
+            text += "No activity to summarize today.\n"
+        else:
+            for server_name, channels in server_summaries.items():
+                text += f"🖥️ {server_name}\n"
+                text += "-" * len(server_name) + "\n\n"
+                
+                for channel_data in channels:
+                    channel_name = channel_data['name']
+                    summaries = channel_data['summaries']
+                    
+                    text += f"# {channel_name}\n"
+                    
+                    if summaries:
+                        for summary in summaries:
+                            text += f"  {summary['timestamp']} • {summary['message_count']} messages\n"
+                            text += f"  {summary['text']}\n\n"
+                    else:
+                        text += "  No activity today\n\n"
+        
+        text += "\n" + "=" * 50 + "\n"
+        text += "This summary was generated by Discord Summarizer\n"
+        
+        return text
+    
+    def test_connection(self):
+        """Test SMTP connection"""
+        if not self.config.is_email_configured():
+            return False, "Email not configured"
+        
+        try:
+            with smtplib.SMTP(self.config.smtp_server, self.config.smtp_port) as server:
+                if self.config.smtp_use_tls:
+                    server.starttls()
+                server.login(self.config.smtp_username, self.config.smtp_password)
+            return True, "SMTP connection successful"
+        except Exception as e:
             return False, str(e)

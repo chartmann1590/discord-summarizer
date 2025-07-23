@@ -1,9 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from app import db, process_channel_summary
 from models import AppConfig, ChannelState, Summary
-from services import DiscordService, OllamaService
+from services import DiscordService, OllamaService, EmailService
 import logging
 import json
+from datetime import datetime
 
 try:
     import pytz
@@ -68,12 +69,36 @@ def config():
     config = AppConfig.get_config()
     
     if request.method == 'POST':
-        # Update configuration
+        # Update basic configuration
         config.user_token = request.form.get('user_token', '').strip()
         config.ollama_url = request.form.get('ollama_url', '').strip()
         config.model_name = request.form.get('model_name', '').strip()
         config.timezone = request.form.get('timezone', 'US/Eastern').strip()
         config.time_format_12hr = request.form.get('time_format') == '12hr'
+        
+        # Update summary prompt
+        config.summary_prompt = request.form.get('summary_prompt', '').strip()
+        if not config.summary_prompt:
+            # Reset to default if empty
+            config.summary_prompt = '''Please provide a concise summary of the following Discord conversation. 
+Focus on the main topics discussed, key decisions made, and important information shared. 
+Keep the summary under {max_length} words.
+
+Conversation:
+{content}
+
+Summary:'''
+        
+        # Update email configuration
+        config.email_enabled = 'email_enabled' in request.form
+        if config.email_enabled:
+            config.email_address = request.form.get('email_address', '').strip()
+            config.smtp_server = request.form.get('smtp_server', '').strip()
+            config.smtp_port = int(request.form.get('smtp_port', 587))
+            config.smtp_username = request.form.get('smtp_username', '').strip()
+            config.smtp_password = request.form.get('smtp_password', '').strip()
+            config.smtp_use_tls = 'smtp_use_tls' in request.form
+            config.daily_email_time = request.form.get('daily_email_time', '09:00').strip()
         
         # Parse channel configuration
         channel_config = request.form.get('channel_config', '')
@@ -120,6 +145,17 @@ def config():
         if not channel_ids:
             errors.append('At least one channel ID is required')
         
+        # Validate email configuration if enabled
+        if config.email_enabled:
+            if not config.email_address:
+                errors.append('Email address is required when email is enabled')
+            if not config.smtp_server:
+                errors.append('SMTP server is required when email is enabled')
+            if not config.smtp_username:
+                errors.append('SMTP username is required when email is enabled')
+            if not config.smtp_password:
+                errors.append('SMTP password is required when email is enabled')
+        
         if errors:
             for error in errors:
                 flash(error, 'danger')
@@ -137,12 +173,15 @@ def config():
                 
                 # Try to get server ID from Discord API
                 if valid:  # Discord connection is valid
-                    channel_info = discord_service.get_channel_info(channel_id)
-                    if channel_info and 'guild_id' in channel_info:
-                        channel_state.server_id = channel_info['guild_id']
-                        # Use Discord server name if no custom name provided
-                        if not server_name and 'guild_name' in channel_info:
-                            channel_state.server_name = channel_info['guild_name']
+                    try:
+                        channel_info = discord_service.get_channel_info(channel_id)
+                        if channel_info and 'guild_id' in channel_info:
+                            channel_state.server_id = channel_info['guild_id']
+                            # Use Discord server name if no custom name provided
+                            if not server_name and 'guild_name' in channel_info:
+                                channel_state.server_name = channel_info['guild_name']
+                    except Exception as e:
+                        logger.warning(f"Could not fetch channel info for {channel_id}: {e}")
             
             db.session.commit()
             flash('Configuration saved successfully!', 'success')
@@ -185,6 +224,36 @@ def get_ollama_models():
     
     return jsonify({'models': models})
 
+@main_bp.route('/api/test-email', methods=['POST'])
+def test_email():
+    """API endpoint to test email configuration"""
+    try:
+        data = request.get_json()
+        
+        # Create a temporary config object for testing
+        class TempConfig:
+            def __init__(self, data):
+                self.email_enabled = True
+                self.email_address = 'test@example.com'  # Dummy email for testing
+                self.smtp_server = data.get('smtp_server')
+                self.smtp_port = data.get('smtp_port', 587)
+                self.smtp_username = data.get('smtp_username')
+                self.smtp_password = data.get('smtp_password')
+                self.smtp_use_tls = data.get('smtp_use_tls', True)
+            
+            def is_email_configured(self):
+                return bool(self.smtp_server and self.smtp_username and self.smtp_password)
+        
+        temp_config = TempConfig(data)
+        email_service = EmailService(temp_config)
+        success, message = email_service.test_connection()
+        
+        return jsonify({'success': success, 'message': message})
+        
+    except Exception as e:
+        logger.error(f"Error testing email connection: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @main_bp.route('/run-now', methods=['POST'])
 def run_now():
     """Trigger summary generation for all channels"""
@@ -199,7 +268,7 @@ def run_now():
     results = []
     for channel_id in config.get_channel_ids():
         try:
-            process_channel_summary(channel_id, discord_service, ollama_service)
+            process_channel_summary(channel_id, discord_service, ollama_service, config)
             results.append({'channel_id': channel_id, 'status': 'success'})
         except Exception as e:
             logger.error(f"Error processing channel {channel_id}: {str(e)}")
@@ -278,7 +347,9 @@ def api_status():
     status = {
         'configured': config.is_configured(),
         'channels_count': len(config.get_channel_ids()),
-        'total_summaries': Summary.query.count()
+        'total_summaries': Summary.query.count(),
+        'email_enabled': config.email_enabled,
+        'email_configured': config.is_email_configured() if config.email_enabled else False
     }
     
     return jsonify(status)
