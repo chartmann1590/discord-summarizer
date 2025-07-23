@@ -289,7 +289,7 @@
             <h6 class="mb-3"><i class="bi bi-graph-up"></i> Overview</h6>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-value">{{ servers|sum(attribute='1')|length }}</div>
+                    <div class="stat-value">{{ servers|map(attribute='1')|map('length')|sum }}</div>
                     <div class="stat-label">Channels</div>
                 </div>
                 <div class="stat-card">
@@ -310,7 +310,7 @@
                 <li class="server-item active" onclick="showAllServers()">
                     <i class="bi bi-grid-3x3-gap"></i>
                     <span>All Servers</span>
-                    <span class="badge bg-secondary">{{ servers|sum(attribute='1')|length }}</span>
+                    <span class="badge bg-secondary">{{ servers|map(attribute='1')|map('length')|sum }}</span>
                 </li>
                 {% for server_name, channels in servers %}
                 <li class="server-item" onclick="showServer('{{ loop.index0 }}')">
