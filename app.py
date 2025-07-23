@@ -97,6 +97,22 @@ def process_channel_summary(channel_id, discord_service, ollama_service):
     # Get summary from Ollama
     summary_text = ollama_service.generate_summary(content)
     
+    # Prepare messages for storage (only essential fields)
+    stored_messages = []
+    for msg in messages:
+        stored_messages.append({
+            'id': msg.get('id'),
+            'author': {
+                'username': msg['author'].get('username', 'Unknown'),
+                'id': msg['author'].get('id'),
+                'avatar': msg['author'].get('avatar')
+            },
+            'content': msg.get('content'),
+            'timestamp': msg.get('timestamp'),
+            'attachments': [{'url': att.get('url'), 'filename': att.get('filename')} 
+                          for att in msg.get('attachments', [])]
+        })
+    
     # Save summary
     summary = Summary(
         channel_id=channel_id,
@@ -104,6 +120,7 @@ def process_channel_summary(channel_id, discord_service, ollama_service):
         message_count=len(messages),
         timestamp=datetime.now(timezone.utc)
     )
+    summary.set_messages(stored_messages)
     db.session.add(summary)
     
     # Update last read timestamp

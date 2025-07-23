@@ -209,11 +209,25 @@ def run_now():
 
 @main_bp.route('/channel/<channel_id>/summaries')
 def channel_summaries(channel_id):
-    """View all summaries for a specific channel"""
+    """View all summaries for a specific channel with search"""
     channel_state = ChannelState.query.filter_by(channel_id=channel_id).first_or_404()
-    summaries = channel_state.summaries.paginate(
+    
+    # Get search query
+    search_query = request.args.get('search', '').strip()
+    
+    # Build query
+    summaries_query = channel_state.summaries
+    
+    if search_query:
+        # Search in summary text
+        summaries_query = summaries_query.filter(
+            Summary.summary_text.contains(search_query)
+        )
+    
+    # Paginate with 5 per page
+    summaries = summaries_query.paginate(
         page=request.args.get('page', 1, type=int),
-        per_page=20,
+        per_page=5,
         error_out=False
     )
     
@@ -225,6 +239,35 @@ def channel_summaries(channel_id):
                          channel_name=channel_name,
                          channel_state=channel_state,
                          summaries=summaries,
+                         config=config,
+                         search_query=search_query)
+
+@main_bp.route('/summary/<int:summary_id>')
+def view_summary(summary_id):
+    """View a single summary with original messages"""
+    summary = Summary.query.get_or_404(summary_id)
+    channel_state = ChannelState.query.filter_by(channel_id=summary.channel_id).first()
+    config = AppConfig.get_config()
+    
+    channel_name = get_channel_name(summary.channel_id, config.user_token)
+    
+    # Get original messages
+    messages = summary.get_messages()
+    
+    # Format timestamps in messages
+    for msg in messages:
+        if msg.get('timestamp'):
+            try:
+                dt = datetime.fromisoformat(msg['timestamp'].replace('Z', '+00:00'))
+                msg['formatted_timestamp'] = config.format_datetime(dt)
+            except:
+                msg['formatted_timestamp'] = msg['timestamp']
+    
+    return render_template('view_summary.html',
+                         summary=summary,
+                         channel_state=channel_state,
+                         channel_name=channel_name,
+                         messages=messages,
                          config=config)
 
 @main_bp.route('/api/status')

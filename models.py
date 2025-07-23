@@ -107,9 +107,22 @@ class Summary(db.Model):
     summary_text = db.Column(db.Text, nullable=False)
     message_count = db.Column(db.Integer, default=0)
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # New field to store the original messages
+    original_messages = db.Column(db.Text, nullable=True)  # JSON string of messages
     
     def formatted_timestamp(self, config=None):
         """Return a formatted timestamp string using user preferences"""
         if not config:
             config = AppConfig.get_config()
         return config.format_datetime(self.timestamp)
+    
+    def get_messages(self):
+        """Return original messages as a list"""
+        try:
+            return json.loads(self.original_messages) if self.original_messages else []
+        except:
+            return []
+    
+    def set_messages(self, messages_list):
+        """Set original messages from a list"""
+        self.original_messages = json.dumps(messages_list)

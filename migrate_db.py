@@ -50,6 +50,16 @@ def migrate_database(db_path='discord_summaries.db'):
             cursor.execute("ALTER TABLE channel_state ADD COLUMN server_id VARCHAR(50)")
             print("✓ Added server_id column")
         
+        # Check summary columns
+        cursor.execute("PRAGMA table_info(summary)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        # Add original_messages column to summary if it doesn't exist
+        if 'original_messages' not in columns:
+            print("Adding original_messages column to summary...")
+            cursor.execute("ALTER TABLE summary ADD COLUMN original_messages TEXT")
+            print("✓ Added original_messages column")
+        
         conn.commit()
         print("\n✅ Database migration completed successfully!")
         
